@@ -75,7 +75,7 @@ function LoadingScreen({ title = 'Pouring your lists…' }) {
 // Full-screen gate shown whenever there is no valid session. Renders Google's
 // own button; on success it exchanges the Google credential for our app JWT
 // (googleLogin) and hands the profile up via onLogin.
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, onBack }) {
   const googleReady = useGoogleReady()
   const buttonRef = useRef(null)
   const [error, setError] = useState(null)
@@ -113,6 +113,9 @@ function LoginScreen({ onLogin }) {
   return (
     <div className='login-screen'>
       <div className='login-card'>
+        {onBack && (
+          <button className='login-back' onClick={onBack}>← Back</button>
+        )}
         <h1 className='login-logo'>Latte</h1>
         <p className='login-tagline'>
           Your morning companion for staying organized.
@@ -470,10 +473,45 @@ function NewSheetModal({ config, onCreate, onCancel }) {
   )
 }
 
+// Public landing page for logged-out visitors. Mirrors the in-app home
+// section (title, tagline, gold feature cards) but with no sidebar and a single
+// sign-in call to action instead of clickable list types.
+function LandingPage({ onGetStarted }) {
+  return (
+    <div className='landing'>
+      <div className='landing-inner'>
+        <h1 id='homeTitle'>Latte</h1>
+        <p id='homeDesc'>
+          Your morning companion for staying organized. Manage your tasks,
+          bucket lists, schedules, and more — all in one place.
+        </p>
+        <div id='homeCards'>
+          {['todo', 'bucket', 'timetable'].map(type => (
+            <div key={type} className='home-card static'>
+              <span className='home-card-title'>{LIST_CONFIG[type].name}</span>
+              <span className='home-card-desc'>
+                {LIST_CONFIG[type].description.split('.')[0]}.
+              </span>
+            </div>
+          ))}
+          <div className='home-card static'>
+            <span className='home-card-title'>Calendar</span>
+            <span className='home-card-desc'>View your month at a glance</span>
+          </div>
+        </div>
+        <button className='landing-cta' onClick={onGetStarted}>
+          Get started — Sign in with Google
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function App() {
   // Session: hydrate from localStorage so a refresh stays logged in. The
   // cached profile is only for painting the sidebar; the real gate is the JWT.
   const [user, setUser] = useState(() => (getToken() ? getStoredUser() : null))
+  const [showLogin, setShowLogin] = useState(false) // landing page -> login screen
 
   const [menuCollapsed, setMenuCollapsed] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
@@ -527,6 +565,7 @@ function App() {
     window.google?.accounts?.id?.disableAutoSelect?.()
     clearSession()
     setUser(null)
+    setShowLogin(false) // back to the landing page
     setLists(EMPTY_LISTS)
     setActiveSection('home')
     setActiveListIndex(null)
@@ -606,7 +645,9 @@ function App() {
   }
 
   if (!user) {
-    return <LoginScreen onLogin={setUser} />
+    return showLogin
+      ? <LoginScreen onLogin={setUser} onBack={() => setShowLogin(false)} />
+      : <LandingPage onGetStarted={() => setShowLogin(true)} />
   }
 
   if (loading) {

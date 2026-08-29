@@ -1121,3 +1121,104 @@
   outline: none;
   max-width: 60vw;
 }
+
+/* ---------- Public landing page ---------- */
+
+.landing {
+  min-height: 100vh;
+  width: 100%;
+  background-color: #FAF0AA;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  position: relative;
+}
+
+.landing::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: url('/body-texture.png') repeat center center;
+  background-size: 300px;
+  opacity: 0.06;
+  pointer-events: none;
+}
+
+.landing-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 620px;
+  padding: 10vh 24px 60px;
+  box-sizing: border-box;
+}
+
+/* the feature cards are descriptive here, not navigation */
+.home-card.static {
+  cursor: default;
+}
+
+.home-card.static:hover {
+  transform: none;
+  background-color: #DCA028;
+  box-shadow: 0 4px 12px rgba(90, 50, 30, 0.15);
+}
+
+.landing-cta {
+  margin-top: 44px;
+  background-color: #5A321E;
+  color: #FAF0AA;
+  border: none;
+  border-radius: 999px;
+  padding: 14px 32px;
+  font-family: 'Georgia', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(50, 20, 10, 0.25);
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.landing-cta:hover {
+  background-color: #32140A;
+  transform: translateY(-2px);
+}
+
+.landing-cta:active {
+  transform: translateY(0);
+}
+
+/* back link on the login card when it was reached from the landing */
+.login-back {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: #FAF0AACC;
+  font-family: 'Georgia', serif;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+.login-back:hover {
+  color: #FAF0AA;
+}
+
+@media (max-width: 560px) {
+  .landing #homeCards {
+    grid-template-columns: minmax(0, 320px);
+  }
+  .landing #homeTitle {
+    font-size: 2.6rem;
+  }
+  .landing-cta {
+    white-space: normal;
+    text-align: center;
+  }
+}
