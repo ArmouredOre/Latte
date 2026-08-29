@@ -6,3 +6,4 @@ pydantic-settings==2.10.1
 google-auth==2.40.3
 requests==2.32.5
 PyJWT==2.10.1
+psycopg[binary]==3.2.9

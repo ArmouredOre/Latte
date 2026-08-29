@@ -17,6 +17,21 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @property
+    def sqlalchemy_url(self) -> str:
+        """Normalize the DB URL. Render/Heroku hand out `postgres://...`;
+        SQLAlchemy 2.x needs an explicit driver (`postgresql+psycopg://`)."""
+        url = self.database_url
+        if url.startswith("postgres://"):
+            return "postgresql+psycopg://" + url[len("postgres://"):]
+        if url.startswith("postgresql://"):
+            return "postgresql+psycopg://" + url[len("postgresql://"):]
+        return url
+
+    @property
+    def is_sqlite(self) -> bool:
+        return self.database_url.startswith("sqlite")
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,0 +1,36 @@
+# Render Blueprint — provisions the Latte API + its database.
+# In Render: New > Blueprint, point at this repo, then fill in the
+# `sync: false` env vars (GOOGLE_CLIENT_ID, CORS_ORIGINS) in the dashboard.
+#
+# To use an external free Postgres (Neon/Supabase) instead of Render's
+# 30-day free DB: delete the `databases:` block below and the DATABASE_URL
+# `fromDatabase` entry, then add DATABASE_URL as a `sync: false` env var and
+# paste the external connection string in the dashboard.
+
+services:
+  - type: web
+    name: latte-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.5
+      - key: DATABASE_URL
+        fromDatabase:
+          name: latte-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true          # Render generates a strong random secret
+      - key: GOOGLE_CLIENT_ID
+        sync: false                  # set in the Render dashboard
+      - key: CORS_ORIGINS
+        sync: false                  # e.g. https://your-app.vercel.app
+
+databases:
+  - name: latte-db
+    plan: free
+    databaseName: latte
