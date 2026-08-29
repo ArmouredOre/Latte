@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -12,6 +13,7 @@ from .database import get_db
 from .models import User
 
 settings = get_settings()
+logger = logging.getLogger("latte.auth")
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -26,7 +28,8 @@ def verify_google_credential(credential: str) -> dict:
             audience=settings.google_client_id,
         )
     except ValueError as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=f"Invalid Google token: {exc}")
+        logger.warning("Google credential rejected: %s", exc)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid Google credential")
     if info.get("iss") not in GOOGLE_TOKEN_ISSUERS:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Invalid token issuer")
     if not info.get("email_verified"):
