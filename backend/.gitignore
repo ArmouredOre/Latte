@@ -1,0 +1,13 @@
+# Secrets / local config — keep .env.example
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# SQLite database
+*.db
+*.sqlite3

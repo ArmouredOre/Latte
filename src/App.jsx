@@ -1,7 +1,90 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import './App.css'
+import {
+  googleLogin,
+  getToken,
+  getStoredUser,
+  clearSession,
+  listSheets,
+  createSheet,
+  updateSheet,
+  deleteSheet,
+} from './api'
 
-const STORAGE_KEY = 'latte-sheets'
+// In-memory shape per list type: [{ id, name, rows, saved }]
+// where `saved` = "matches what's on the server".
+const EMPTY_LISTS = { todo: [], bucket: [], timetable: [] }
+
+// Collision-proof row id (Date.now() repeats on fast clicks).
+const newRowId = () =>
+  (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `r-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+// Resolves to true once the Google Identity Services script (added in
+// index.html) has attached window.google.accounts.id.
+function useGoogleReady() {
+  const [ready, setReady] = useState(() => !!window.google?.accounts?.id)
+  useEffect(() => {
+    if (ready) return
+    const timer = setInterval(() => {
+      if (window.google?.accounts?.id) {
+        setReady(true)
+        clearInterval(timer)
+      }
+    }, 100)
+    return () => clearInterval(timer)
+  }, [ready])
+  return ready
+}
+
+// Full-screen gate shown whenever there is no valid session. Renders Google's
+// own button; on success it exchanges the Google credential for our app JWT
+// (googleLogin) and hands the profile up via onLogin.
+function LoginScreen({ onLogin }) {
+  const googleReady = useGoogleReady()
+  const buttonRef = useRef(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!googleReady || !buttonRef.current) return
+    const { google } = window
+    google.accounts.id.initialize({
+      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+      callback: async ({ credential }) => {
+        try {
+          setError(null)
+          const user = await googleLogin(credential)
+          onLogin(user)
+        } catch (err) {
+          setError(err.message || 'Sign-in failed. Please try again.')
+        }
+      },
+    })
+    buttonRef.current.innerHTML = '' // avoid a duplicate button under StrictMode
+    google.accounts.id.renderButton(buttonRef.current, {
+      theme: 'filled_blue',
+      size: 'large',
+      text: 'continue_with',
+      shape: 'pill',
+      width: 260,
+    })
+  }, [googleReady, onLogin])
+
+  return (
+    <div className='login-screen'>
+      <div className='login-card'>
+        <h1 className='login-logo'>Latte</h1>
+        <p className='login-tagline'>
+          Your morning companion for staying organized.
+        </p>
+        <div ref={buttonRef} className='google-btn-mount' />
+        {!googleReady && <p className='login-hint'>Loading sign-in…</p>}
+        {error && <p className='login-error'>{error}</p>}
+      </div>
+    </div>
+  )
+}
 
 const LIST_CONFIG = {
   todo: {
@@ -14,7 +97,7 @@ const LIST_CONFIG = {
       { key: 'status', label: 'Status', type: 'status' },
     ],
     statusOptions: ['Pending', 'In Progress', 'Completed'],
-    rowTemplate: () => ({ id: Date.now(), task: '', dueDate: '', dueTime: '', status: 'Pending' }),
+    rowTemplate: () => ({ id: newRowId(), task: '', dueDate: '', dueTime: '', status: 'Pending' }),
     newRowBtn: '+ Add Task',
   },
   bucket: {
@@ -26,7 +109,7 @@ const LIST_CONFIG = {
       { key: 'status', label: 'Status', type: 'status' },
     ],
     statusOptions: ['Not Started', 'In Progress', 'Done'],
-    rowTemplate: () => ({ id: Date.now(), item: '', category: '', status: 'Not Started' }),
+    rowTemplate: () => ({ id: newRowId(), item: '', category: '', status: 'Not Started' }),
     newRowBtn: '+ Add Item',
   },
   timetable: {
@@ -40,57 +123,38 @@ const LIST_CONFIG = {
       { key: 'status', label: 'Status', type: 'status' },
     ],
     statusOptions: ['Upcoming', 'Ongoing', 'Done'],
-    rowTemplate: () => ({ id: Date.now(), subject: '', day: '', startTime: '', endTime: '', status: 'Upcoming' }),
+    rowTemplate: () => ({ id: newRowId(), subject: '', day: '', startTime: '', endTime: '', status: 'Upcoming' }),
     newRowBtn: '+ Add Entry',
   },
 }
 
-const DEFAULT_LISTS = {
-  todo: [{ name: 'My Tasks', rows: [], saved: true }],
-  bucket: [{ name: 'My Goals', rows: [], saved: true }],
-  timetable: [{ name: 'Weekly Schedule', rows: [], saved: true }],
-}
+// Compares only the parts that get persisted, so a change to the local-only
+// `saved` flag doesn't register as an unsaved edit.
+const sheetSnapshot = (list) => JSON.stringify({ name: list.name, rows: list.rows })
 
-function loadLists() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      return {
-        todo: parsed.todo || DEFAULT_LISTS.todo,
-        bucket: parsed.bucket || DEFAULT_LISTS.bucket,
-        timetable: parsed.timetable || DEFAULT_LISTS.timetable,
-      }
-    }
-  } catch { /* ignore */ }
-  return DEFAULT_LISTS
-}
-
-function saveLists(lists) {
-  const toSave = {}
-  Object.keys(lists).forEach(type => {
-    toSave[type] = lists[type].filter(s => s.saved)
-  })
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
-}
-
-function SheetView({ config, list, setList, onDeleteList, onBack, onDiscard, unsaved }) {
+function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsaved }) {
   const [editingCell, setEditingCell] = useState(null)
-  const [saved, setSaved] = useState(true)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState(list.name)
 
-  const snapshotRef = useRef(JSON.stringify(list))
+  const saved = list.saved
+  const isDraft = list.id == null // never persisted yet
+  // Content as it was when this sheet was opened. Edits are measured against
+  // this; an unchanged sheet (incl. a fresh draft) never auto-saves.
+  const snapshotRef = useRef(sheetSnapshot(list))
 
   const addRow = () => {
-    const updated = { ...list, rows: [...list.rows, config.rowTemplate()], saved: false }
-    setList(updated)
-    setSaved(false)
+    setList({ ...list, rows: [...list.rows, config.rowTemplate()], saved: false })
   }
 
   const deleteRow = (id) => {
-    const updated = { ...list, rows: list.rows.length === 1 ? [] : list.rows.filter(row => row.id !== id), saved: false }
-    setList(updated)
-    setSaved(false)
+    setList({
+      ...list,
+      rows: list.rows.length === 1 ? [] : list.rows.filter(row => row.id !== id),
+      saved: false,
+    })
   }
 
   const updateCell = (id, field, value) => {
@@ -99,7 +163,6 @@ function SheetView({ config, list, setList, onDeleteList, onBack, onDiscard, uns
       rows: list.rows.map(row => row.id === id ? { ...row, [field]: value } : row),
       saved: false,
     })
-    setSaved(false)
   }
 
   const cycleStatus = (id) => {
@@ -115,27 +178,70 @@ function SheetView({ config, list, setList, onDeleteList, onBack, onDiscard, uns
       }),
       saved: false,
     })
-    setSaved(false)
   }
 
-  const handleSave = () => {
-    const updated = { ...list, saved: true }
-    setList(updated)
-    setSaved(true)
-    snapshotRef.current = JSON.stringify(updated)
+  const handleSave = async () => {
+    setSaving(true)
+    const ok = await onSave() // App does the PUT and flips list.saved
+    setSaving(false)
+    if (ok) {
+      snapshotRef.current = sheetSnapshot(list)
+      setShowConfirmModal(false)
+    }
+    return ok
   }
 
   const handleBack = () => {
-    const current = JSON.stringify(list)
-    if (current !== snapshotRef.current && !saved) {
+    const dirty = sheetSnapshot(list) !== snapshotRef.current
+    if (isDraft && !dirty) {
+      onDeleteList() // untouched draft — drop it, nothing was persisted
+      return
+    }
+    if (!saved && dirty) {
       setShowConfirmModal(true)
-    } else {
-      onBack()
+      return
+    }
+    onBack()
+  }
+
+  // "Save" button inside the unsaved-changes modal: persist, then leave.
+  const handleSaveAndLeave = async () => {
+    const ok = await handleSave()
+    if (ok) onBack()
+  }
+
+  const startRename = () => {
+    setNameDraft(list.name)
+    setEditingName(true)
+  }
+
+  const commitRename = () => {
+    setEditingName(false)
+    const trimmed = nameDraft.trim()
+    if (trimmed && trimmed !== list.name) {
+      setList({ ...list, name: trimmed, saved: false }) // auto-save persists it
     }
   }
 
+  // Step 5: debounced auto-save. Fires ~1.2s after the last edit, but only once
+  // the sheet actually differs from how it was opened — so an untouched draft
+  // is never persisted. `list` is a fresh object per change, so the effect
+  // re-runs and the timer restarts (standard debounce).
+  useEffect(() => {
+    if (saved || saving) return
+    if (sheetSnapshot(list) === snapshotRef.current) return
+    const timer = setTimeout(() => { handleSave() }, 1200)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, saved, saving])
+
   const handleDiscard = () => {
-    onDiscard()
+    if (isDraft) {
+      onDeleteList() // never persisted — drop the draft entirely
+      return
+    }
+    // revert name + rows to the last saved snapshot, keep id, mark clean
+    setList({ ...list, ...JSON.parse(snapshotRef.current), saved: true })
     onBack()
   }
 
@@ -158,12 +264,33 @@ function SheetView({ config, list, setList, onDeleteList, onBack, onDiscard, uns
       <div className='sheet-header'>
         <div className='sheet-title-row'>
           <button className='back-btn' onClick={handleBack} title='Go back'>← Back</button>
-          <h1 id='sheetName'>{list.name || config.name}</h1>
+          {editingName ? (
+            <input
+              className='sheet-name-input'
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename()
+                if (e.key === 'Escape') setEditingName(false)
+              }}
+              autoFocus
+            />
+          ) : (
+            <h1
+              id='sheetName'
+              className='sheet-name'
+              onClick={startRename}
+              title='Click to rename'
+            >
+              {list.name || config.name}
+            </h1>
+          )}
           {unsaved && <span className='unsaved-dot' title='Unsaved changes'>●</span>}
         </div>
         <div className='sheet-actions'>
-          <button className={`save-btn ${saved ? 'saved' : ''}`} onClick={handleSave} disabled={saved}>
-            {saved ? '✓ Saved' : 'Save'}
+          <button className={`save-btn ${saved ? 'saved' : ''}`} onClick={handleSave} disabled={saved || saving}>
+            {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
           </button>
           <button className='delete-sheet-btn' onClick={onDeleteList} title='Delete this sheet'>Delete Sheet</button>
         </div>
@@ -234,7 +361,9 @@ function SheetView({ config, list, setList, onDeleteList, onBack, onDiscard, uns
             <div className='modal-actions three-btns'>
               <button className='modal-btn cancel' onClick={() => setShowConfirmModal(false)}>Stay</button>
               <button className='modal-btn discard' onClick={handleDiscard}>Discard</button>
-              <button className='modal-btn confirm' onClick={handleSave}>Save</button>
+              <button className='modal-btn confirm' onClick={handleSaveAndLeave} disabled={saving}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
             </div>
           </div>
         </div>
@@ -248,11 +377,17 @@ function ListLanding({ type, config, lists, onSelect, onCreate, onDelete }) {
     <div id='listLanding'>
       <h1 id='listTitle'>{config.name}</h1>
       <p id='listDesc'>{config.description}</p>
+      {lists.length === 0 && (
+        <p className='landing-empty'>Nothing here yet — create your first {config.name.toLowerCase()} below.</p>
+      )}
       <div id='listCards'>
         {lists.map((l, i) => (
-          <div key={i} className='home-card-wrapper'>
+          <div key={l.id ?? i} className='home-card-wrapper'>
             <button className='home-card' onClick={() => onSelect(i)}>
-              <span className='home-card-title'>{l.name}</span>
+              <span className='home-card-title'>
+                {l.name}
+                {!l.saved && <span className='dirty-dot' title='Unsaved changes'> ●</span>}
+              </span>
               <span className='home-card-desc'>{l.rows.length} item{l.rows.length !== 1 ? 's' : ''}</span>
             </button>
             <button className='delete-card-btn' onClick={(e) => { e.stopPropagation(); onDelete(i) }} title='Delete'>×</button>
@@ -271,8 +406,7 @@ function NewSheetModal({ config, onCreate, onCancel }) {
   const [name, setName] = useState('')
 
   const handleSubmit = () => {
-    const trimmed = name.trim()
-    onCreate(trimmed || `${config.name} ${Date.now()}`)
+    onCreate(name.trim() || `Untitled ${config.name}`)
   }
 
   return (
@@ -298,14 +432,66 @@ function NewSheetModal({ config, onCreate, onCancel }) {
 }
 
 function App() {
+  // Session: hydrate from localStorage so a refresh stays logged in. The
+  // cached profile is only for painting the sidebar; the real gate is the JWT.
+  const [user, setUser] = useState(() => (getToken() ? getStoredUser() : null))
+
   const [menuCollapsed, setMenuCollapsed] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
   const [activeListIndex, setActiveListIndex] = useState(null)
-  const [lists, setLists] = useState(loadLists)
+  const [lists, setLists] = useState(EMPTY_LISTS)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
   const [showNewSheetModal, setShowNewSheetModal] = useState(false)
   const [expandedFolders, setExpandedFolders] = useState({ todo: true, bucket: false, timetable: false })
 
   const listTypes = ['todo', 'bucket', 'timetable']
+
+  // Any failed request lands here. A 401 means the JWT is dead -> sign out;
+  // anything else shows a dismissable banner.
+  const handleApiError = (err) => {
+    if (err?.status === 401) {
+      setUser(null)
+      return
+    }
+    setError(err?.message || 'Something went wrong. Please try again.')
+  }
+
+  // Load every sheet once, right after we have a session, and group by type.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    setLoading(true)
+    listSheets()
+      .then((sheets) => {
+        if (cancelled) return
+        const grouped = { todo: [], bucket: [], timetable: [] }
+        for (const s of sheets) {
+          if (!grouped[s.list_type]) continue
+          grouped[s.list_type].push({ id: s.id, name: s.name, rows: s.rows, saved: true })
+        }
+        setLists(grouped)
+      })
+      .catch((err) => { if (!cancelled) handleApiError(err) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [user])
+
+  // Auto-dismiss the error banner after a few seconds.
+  useEffect(() => {
+    if (!error) return
+    const t = setTimeout(() => setError(null), 6000)
+    return () => clearTimeout(t)
+  }, [error])
+
+  const handleLogout = () => {
+    window.google?.accounts?.id?.disableAutoSelect?.()
+    clearSession()
+    setUser(null)
+    setLists(EMPTY_LISTS)
+    setActiveSection('home')
+    setActiveListIndex(null)
+  }
 
   const navigateTo = (section, listIndex = null) => {
     setActiveSection(section)
@@ -316,49 +502,77 @@ function App() {
     setExpandedFolders(prev => ({ ...prev, [type]: !prev[type] }))
   }
 
+  // Draft-first: a new sheet lives only in memory (id: null) until the first
+  // real edit or a manual Save persists it. This avoids leaving empty sheets
+  // on the server when a user creates one by mistake and backs out.
   const createNewList = (type, name) => {
-    const newList = { name, rows: [], saved: false }
-    const updated = { ...lists, [type]: [...lists[type], newList] }
-    setLists(updated)
-    setActiveListIndex(updated[type].length - 1)
     setShowNewSheetModal(false)
+    const newIndex = lists[type].length
+    setLists(prev => ({
+      ...prev,
+      [type]: [...prev[type], {
+        id: null,
+        name,
+        rows: [LIST_CONFIG[type].rowTemplate()], // one row ready to fill in
+        saved: false,
+      }],
+    }))
+    navigateTo(type, newIndex)
   }
 
-  const deleteList = (type, index) => {
-    const updated = { ...lists, [type]: lists[type].filter((_, i) => i !== index) }
-    setLists(updated)
-    saveLists(updated)
+  const deleteList = async (type, index) => {
+    const target = lists[type][index]
+    try {
+      if (target?.id != null) await deleteSheet(target.id)
+    } catch (err) {
+      handleApiError(err)
+      return
+    }
+    const nextArr = lists[type].filter((_, i) => i !== index)
+    setLists(prev => ({ ...prev, [type]: nextArr }))
     if (activeSection === type && activeListIndex === index) {
       setActiveListIndex(null)
-    } else if (activeSection === type && activeListIndex != null) {
-      const newIdx = lists[type].reduce((acc, _, i) => {
-        if (i < activeListIndex && i !== index) return acc + 1
-        return acc
-      }, 0)
-      setActiveListIndex(Math.min(newIdx, updated[type].length - 1))
+    } else if (activeSection === type && activeListIndex != null && activeListIndex > index) {
+      setActiveListIndex(activeListIndex - 1)
     }
   }
 
+  // Local-only: cell edits shouldn't hit the network on every keystroke.
   const updateList = (type, index, updatedList) => {
-    const updated = { ...lists, [type]: lists[type].map((l, i) => i === index ? updatedList : l) }
-    setLists(updated)
+    setLists(prev => ({
+      ...prev,
+      [type]: prev[type].map((l, i) => (i === index ? updatedList : l)),
+    }))
   }
 
-  const saveSheet = (type, index) => {
-    const updated = { ...lists, [type]: lists[type].map((l, i) => i === index ? { ...l, saved: true } : l) }
-    setLists(updated)
-    saveLists(updated)
+  // Persist the sheet. First save (id == null) creates it; later saves update.
+  // Returns true on success so SheetView can react.
+  const saveSheet = async (type, index) => {
+    const sheet = lists[type][index]
+    try {
+      const s = sheet.id == null
+        ? await createSheet(sheet.name, type, sheet.rows)
+        : await updateSheet(sheet.id, { name: sheet.name, rows: sheet.rows })
+      setLists(prev => ({
+        ...prev,
+        [type]: prev[type].map((l, i) =>
+          i === index ? { ...l, id: s.id, name: s.name, rows: s.rows, saved: true } : l
+        ),
+      }))
+      return true
+    } catch (err) {
+      handleApiError(err)
+      return false
+    }
   }
 
-  const discardSheet = (type, index) => {
-    const updated = { ...lists, [type]: lists[type].map((l, i) => i === index ? { ...l, saved: false } : l) }
-    setLists(updated)
+  if (!user) {
+    return <LoginScreen onLogin={setUser} />
   }
 
-  const savedLists = {}
-  Object.keys(lists).forEach(type => {
-    savedLists[type] = lists[type].filter(s => s.saved)
-  })
+  if (loading) {
+    return <div className='app-loading'>Loading your lists…</div>
+  }
 
   return (
     <div id='body'>
@@ -368,7 +582,18 @@ function App() {
         ) : (
           <>
             <div id='user'>
-              <span className='user-label'>User</span>
+              {user.picture && (
+                <img
+                  className='user-avatar'
+                  src={user.picture}
+                  alt=''
+                  referrerPolicy='no-referrer'
+                />
+              )}
+              <span className='user-label'>{user.name || user.email}</span>
+              <button className='logout-btn' onClick={handleLogout} title='Log out'>
+                Log out
+              </button>
             </div>
             <div id='list'>
               {listTypes.map(type => (
@@ -382,16 +607,19 @@ function App() {
                   </button>
                   {expandedFolders[type] && (
                     <div className='folder-children'>
-                      {savedLists[type].map((sheet, i) => {
-                        const originalIndex = lists[type].findIndex(s => s.name === sheet.name && s.saved)
-                        const isActive = activeSection === type && activeListIndex === originalIndex
+                      {lists[type].length === 0 && (
+                        <span className='folder-empty'>No lists yet</span>
+                      )}
+                      {lists[type].map((sheet, i) => {
+                        const isActive = activeSection === type && activeListIndex === i
                         return (
                           <button
-                            key={originalIndex}
+                            key={sheet.id ?? i}
                             className={`sheet-file ${isActive ? 'active' : ''}`}
-                            onClick={() => navigateTo(type, originalIndex)}
+                            onClick={() => navigateTo(type, i)}
                           >
                             {sheet.name}
+                            {!sheet.saved && <span className='dirty-dot' title='Unsaved changes'> ●</span>}
                           </button>
                         )
                       })}
@@ -431,7 +659,7 @@ function App() {
               </button>
             </div>
           </div>
-        ) : activeListIndex === null ? (
+        ) : (activeListIndex === null || !lists[activeSection][activeListIndex]) ? (
           <ListLanding
             type={activeSection}
             config={LIST_CONFIG[activeSection]}
@@ -446,13 +674,19 @@ function App() {
             config={LIST_CONFIG[activeSection]}
             list={lists[activeSection][activeListIndex]}
             setList={(updated) => updateList(activeSection, activeListIndex, updated)}
+            onSave={() => saveSheet(activeSection, activeListIndex)}
             onDeleteList={() => deleteList(activeSection, activeListIndex)}
             onBack={() => navigateTo(activeSection, null)}
-            onDiscard={() => discardSheet(activeSection, activeListIndex)}
             unsaved={lists[activeSection][activeListIndex] && !lists[activeSection][activeListIndex].saved}
           />
         )}
       </div>
+      {error && (
+        <div className='error-banner' role='alert'>
+          <span>{error}</span>
+          <button className='error-dismiss' onClick={() => setError(null)}>×</button>
+        </div>
+      )}
       {showNewSheetModal && (
         <NewSheetModal
           config={LIST_CONFIG[activeSection]}

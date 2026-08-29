@@ -12,6 +12,20 @@ dist
 dist-ssr
 *.local
 
+# Env files with real values (keep the *.example templates)
+.env
+.env.*
+!.env.example
+
+# Python backend
+.venv/
+__pycache__/
+*.py[cod]
+
+# SQLite databases
+*.db
+*.sqlite3
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

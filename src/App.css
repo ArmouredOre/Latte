@@ -267,7 +267,8 @@
 #sheet thead th:nth-child(3) { width: 140px; }
 #sheet thead th:nth-child(4) { width: 120px; }
 #sheet thead th:nth-child(5) { width: 130px; }
-#sheet thead th:nth-child(6) { width: 40px; }
+#sheet thead th:nth-child(6) { width: 120px; }
+#sheet thead th:last-child { width: 40px; }
 
 #sheet thead th {
   background-color: #78503C;
@@ -863,4 +864,201 @@
   text-align: center;
   line-height: 1.5;
   margin: 0;
+}
+
+/* ---------- Auth: login screen ---------- */
+
+.login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: #FAF0AA;
+}
+
+.login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  background-color: #B4783C;
+  padding: 44px 52px;
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(50, 20, 10, 0.25);
+  max-width: 360px;
+  text-align: center;
+}
+
+.login-logo {
+  font-family: 'Georgia', serif;
+  font-size: 2.4rem;
+  color: #FAF0AA;
+  margin: 0;
+  letter-spacing: 1px;
+}
+
+.login-tagline {
+  font-family: 'Georgia', serif;
+  font-size: 0.95rem;
+  color: #FAF0AACC;
+  margin: 0 0 6px;
+  line-height: 1.5;
+}
+
+.google-btn-mount {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.login-hint {
+  font-family: 'Georgia', serif;
+  font-size: 0.8rem;
+  color: #FAF0AA99;
+  margin: 0;
+}
+
+.login-error {
+  font-family: 'Georgia', serif;
+  font-size: 0.82rem;
+  color: #32140A;
+  background-color: #F0BE50;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin: 0;
+}
+
+/* ---------- Auth: sidebar user area ---------- */
+
+#user {
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+  height: auto;
+  min-height: 10%;
+}
+
+.user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid #DCA028;
+  object-fit: cover;
+}
+
+.logout-btn {
+  background: none;
+  border: 1px solid #FAF0AA55;
+  color: #FAF0AACC;
+  font-family: 'Georgia', serif;
+  font-size: 0.7rem;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.logout-btn:hover {
+  background-color: #78503C;
+  color: #FAF0AA;
+}
+
+/* ---------- Step 4: server-backed lists ---------- */
+
+.app-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  width: 100vw;
+  background-color: #FAF0AA;
+  font-family: 'Georgia', serif;
+  font-size: 1rem;
+  color: #78503C;
+}
+
+.folder-empty {
+  display: block;
+  padding: 4px 10px 4px 26px;
+  font-family: 'Georgia', serif;
+  font-size: 0.72rem;
+  font-style: italic;
+  color: #FAF0AA88;
+}
+
+.dirty-dot {
+  color: #DCA028;
+  font-size: 0.7rem;
+}
+
+.error-banner {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 90vw;
+  background-color: #5A321E;
+  color: #FAF0AA;
+  font-family: 'Georgia', serif;
+  font-size: 0.85rem;
+  padding: 10px 14px;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(50, 20, 10, 0.3);
+}
+
+.error-dismiss {
+  background: none;
+  border: none;
+  color: #FAF0AACC;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.error-dismiss:hover {
+  color: #FAF0AA;
+}
+
+/* ---------- Step 5: empty landing state ---------- */
+
+.landing-empty {
+  font-family: 'Georgia', serif;
+  font-size: 0.9rem;
+  font-style: italic;
+  color: #78503C;
+  margin: 0 0 18px;
+}
+
+/* ---------- Polish: editable sheet name ---------- */
+
+.sheet-name {
+  cursor: text;
+  border-radius: 6px;
+  padding: 0 6px;
+  transition: background-color 0.15s;
+}
+
+.sheet-name:hover {
+  background-color: #5A321E12;
+}
+
+.sheet-name-input {
+  color: #5A321E;
+  font-size: 1.8rem;
+  margin: 1rem 0;
+  font-weight: 700;
+  font-family: 'Georgia', serif;
+  letter-spacing: 1px;
+  background-color: #FAF0AA;
+  border: 2px solid #B4783C;
+  border-radius: 6px;
+  padding: 0 6px;
+  outline: none;
+  max-width: 60vw;
 }
