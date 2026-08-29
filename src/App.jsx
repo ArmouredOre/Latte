@@ -25,12 +25,13 @@ const newRowId = () =>
 const THEMES = [
   { id: 'latte', label: 'Latte' },
   { id: 'cappuccino', label: 'Cappuccino' },
-  { id: 'espresso', label: 'Espresso' },
-  { id: 'mocha', label: 'Mocha' },
+  { id: 'espresso', label: 'Espresso', dark: true },
+  { id: 'mocha', label: 'Mocha', dark: true },
   { id: 'matcha', label: 'Matcha' },
   { id: 'chai', label: 'Chai' },
   { id: 'strawberry', label: 'Strawberry Latte' },
 ]
+const isDarkTheme = (id) => !!THEMES.find(t => t.id === id)?.dark
 const THEME_IDS = THEMES.map(t => t.id)
 const THEME_KEY = 'latte-theme'
 
@@ -50,8 +51,17 @@ function useThemeState() {
   return [theme, setTheme]
 }
 
-// Floating theme picker, available on every screen.
-function ThemeMenu({ theme, onChange }) {
+const PaletteIcon = () => (
+  <svg viewBox='0 0 24 24' width='16' height='16' fill='none' stroke='currentColor'
+       strokeWidth='1.8' strokeLinecap='round' strokeLinejoin='round' aria-hidden='true'>
+    <path d='M12 3a9 9 0 1 0 0 18c.9 0 1.4-.7 1.4-1.5 0-.4-.2-.7-.4-1-.3-.3-.4-.6-.4-1 0-.8.6-1.4 1.4-1.4H16a5 5 0 0 0 5-5c0-4.4-4-8-9-8Z' />
+    <circle cx='8' cy='10' r='1.1' /><circle cx='12' cy='7.5' r='1.1' /><circle cx='16' cy='10' r='1.1' />
+  </svg>
+)
+
+// Theme picker. `variant="floating"` = fixed top-right pill (pre-auth screens);
+// `variant="inline"` = a row that sits in the sidebar footer.
+function ThemeMenu({ theme, onChange, variant = 'floating' }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -70,7 +80,7 @@ function ThemeMenu({ theme, onChange }) {
   const current = THEMES.find(t => t.id === theme) ?? THEMES[0]
 
   return (
-    <div className='theme-menu' ref={ref}>
+    <div className={`theme-menu theme-menu-${variant}`} ref={ref}>
       {open && (
         <ul className='theme-menu-list' role='listbox' aria-label='Theme'>
           {THEMES.map(t => (
@@ -94,10 +104,14 @@ function ThemeMenu({ theme, onChange }) {
         className='theme-menu-toggle'
         aria-haspopup='listbox'
         aria-expanded={open}
+        aria-label='Change theme'
+        title='Change theme'
         onClick={() => setOpen(o => !o)}
       >
-        <span className={`theme-bead theme-bead-${current.id}`} />
-        {current.label}
+        <PaletteIcon />
+        <span className='theme-menu-label'>
+          {variant === 'inline' ? 'Theme' : current.label}
+        </span>
       </button>
     </div>
   )
@@ -157,11 +171,12 @@ function LoadingScreen({ title = 'Pouring your lists…' }) {
 // Full-screen gate shown whenever there is no valid session. Renders Google's
 // own button; on success it exchanges the Google credential for our app JWT
 // (googleLogin) and hands the profile up via onLogin.
-function LoginScreen({ onLogin, onBack }) {
+function LoginScreen({ onLogin, onBack, theme }) {
   const googleReady = useGoogleReady()
   const buttonRef = useRef(null)
   const [error, setError] = useState(null)
   const [signingIn, setSigningIn] = useState(false)
+  const dark = isDarkTheme(theme)
 
   useEffect(() => {
     if (!googleReady || !buttonRef.current) return
@@ -182,13 +197,13 @@ function LoginScreen({ onLogin, onBack }) {
     })
     buttonRef.current.innerHTML = '' // avoid a duplicate button under StrictMode
     google.accounts.id.renderButton(buttonRef.current, {
-      theme: 'filled_blue',
+      theme: dark ? 'filled_black' : 'filled_blue', // filled_black avoids a white card on dark themes
       size: 'large',
       text: 'continue_with',
       shape: 'pill',
       width: 260,
     })
-  }, [googleReady, onLogin, signingIn])
+  }, [googleReady, onLogin, signingIn, dark])
 
   if (signingIn) return <LoadingScreen title='Signing you in…' />
 
@@ -715,26 +730,24 @@ function App() {
     }
   }
 
-  const themeMenu = <ThemeMenu theme={theme} onChange={setTheme} />
+  const floatingThemeMenu = <ThemeMenu theme={theme} onChange={setTheme} variant='floating' />
 
   if (!user) {
     return (
       <>
-        {themeMenu}
+        {floatingThemeMenu}
         {showLogin
-          ? <LoginScreen onLogin={setUser} onBack={() => setShowLogin(false)} />
+          ? <LoginScreen onLogin={setUser} onBack={() => setShowLogin(false)} theme={theme} />
           : <LandingPage onGetStarted={() => setShowLogin(true)} />}
       </>
     )
   }
 
   if (loading) {
-    return <>{themeMenu}<LoadingScreen /></>
+    return <>{floatingThemeMenu}<LoadingScreen /></>
   }
 
   return (
-    <>
-    {themeMenu}
     <div id='body'>
       <div id='menu' className={menuCollapsed ? 'collapsed' : ''}>
         {menuCollapsed ? (
@@ -788,6 +801,7 @@ function App() {
                 </div>
               ))}
             </div>
+            <ThemeMenu theme={theme} onChange={setTheme} variant='inline' />
             <button id='menuCollapse' onClick={() => setMenuCollapsed(true)}>←</button>
           </>
         )}
@@ -855,7 +869,6 @@ function App() {
         />
       )}
     </div>
-    </>
   )
 }
 
