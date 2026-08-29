@@ -21,6 +21,88 @@ const newRowId = () =>
     ? crypto.randomUUID()
     : `r-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
+// ---- Themes ----------------------------------------------------------------
+const THEMES = [
+  { id: 'latte', label: 'Latte' },
+  { id: 'cappuccino', label: 'Cappuccino' },
+  { id: 'espresso', label: 'Espresso' },
+  { id: 'mocha', label: 'Mocha' },
+  { id: 'matcha', label: 'Matcha' },
+  { id: 'chai', label: 'Chai' },
+  { id: 'strawberry', label: 'Strawberry Latte' },
+]
+const THEME_IDS = THEMES.map(t => t.id)
+const THEME_KEY = 'latte-theme'
+
+// Owns the active theme, writes data-theme on <html>, persists to localStorage.
+function useThemeState() {
+  const [theme, setTheme] = useState(() => {
+    try {
+      const saved = localStorage.getItem(THEME_KEY)
+      if (THEME_IDS.includes(saved)) return saved
+    } catch { /* ignore */ }
+    return 'latte'
+  })
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    try { localStorage.setItem(THEME_KEY, theme) } catch { /* ignore */ }
+  }, [theme])
+  return [theme, setTheme]
+}
+
+// Floating theme picker, available on every screen.
+function ThemeMenu({ theme, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const current = THEMES.find(t => t.id === theme) ?? THEMES[0]
+
+  return (
+    <div className='theme-menu' ref={ref}>
+      {open && (
+        <ul className='theme-menu-list' role='listbox' aria-label='Theme'>
+          {THEMES.map(t => (
+            <li key={t.id}>
+              <button
+                type='button'
+                role='option'
+                aria-selected={t.id === theme}
+                className={`theme-option ${t.id === theme ? 'is-current' : ''}`}
+                onClick={() => { onChange(t.id); setOpen(false) }}
+              >
+                <span className={`theme-bead theme-bead-${t.id}`} />
+                {t.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <button
+        type='button'
+        className='theme-menu-toggle'
+        aria-haspopup='listbox'
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span className={`theme-bead theme-bead-${current.id}`} />
+        {current.label}
+      </button>
+    </div>
+  )
+}
+
 // Resolves to true once the Google Identity Services script (added in
 // index.html) has attached window.google.accounts.id.
 function useGoogleReady() {
@@ -287,19 +369,8 @@ function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsave
     onBack()
   }
 
-  const getStatusColor = (status) => {
-    const colors = {}
-    config.statusOptions.forEach((s, i) => {
-      const palette = ['#5A321E', '#B4783C', '#DCA028', '#78503C', '#F0BE50']
-      colors[s] = palette[i % palette.length]
-    })
-    return colors[status] || '#78503C'
-  }
-
-  const getStatusTextColor = (status) => {
-    const darkBg = ['#5A321E', '#78503C']
-    return darkBg.includes(getStatusColor(status)) ? '#FAF0AA' : '#32140A'
-  }
+  // status colour comes from the theme via a status-{0,1,2} class
+  const statusIndex = (status) => Math.max(0, config.statusOptions.indexOf(status))
 
   return (
     <div className='sheet-view'>
@@ -356,10 +427,9 @@ function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsave
                       <td
                         key={col.key}
                         className='cell status-cell'
-                        style={{ backgroundColor: getStatusColor(row[col.key]) + '30' }}
                         onClick={() => cycleStatus(row.id)}
                       >
-                        <span className='status-badge' style={{ backgroundColor: getStatusColor(row[col.key]), color: getStatusTextColor(row[col.key]) }}>
+                        <span className={`status-badge status-${statusIndex(row[col.key])}`}>
                           {row[col.key]}
                         </span>
                       </td>
@@ -512,6 +582,7 @@ function App() {
   // cached profile is only for painting the sidebar; the real gate is the JWT.
   const [user, setUser] = useState(() => (getToken() ? getStoredUser() : null))
   const [showLogin, setShowLogin] = useState(false) // landing page -> login screen
+  const [theme, setTheme] = useThemeState()
 
   const [menuCollapsed, setMenuCollapsed] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
@@ -644,17 +715,26 @@ function App() {
     }
   }
 
+  const themeMenu = <ThemeMenu theme={theme} onChange={setTheme} />
+
   if (!user) {
-    return showLogin
-      ? <LoginScreen onLogin={setUser} onBack={() => setShowLogin(false)} />
-      : <LandingPage onGetStarted={() => setShowLogin(true)} />
+    return (
+      <>
+        {themeMenu}
+        {showLogin
+          ? <LoginScreen onLogin={setUser} onBack={() => setShowLogin(false)} />
+          : <LandingPage onGetStarted={() => setShowLogin(true)} />}
+      </>
+    )
   }
 
   if (loading) {
-    return <LoadingScreen />
+    return <>{themeMenu}<LoadingScreen /></>
   }
 
   return (
+    <>
+    {themeMenu}
     <div id='body'>
       <div id='menu' className={menuCollapsed ? 'collapsed' : ''}>
         {menuCollapsed ? (
@@ -775,6 +855,7 @@ function App() {
         />
       )}
     </div>
+    </>
   )
 }
 
