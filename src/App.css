@@ -1035,7 +1035,50 @@
   line-height: 1.5;
 }
 
-.google-btn-mount { display: flex; justify-content: center; min-height: 44px; }
+/* Our own button face; Google's real button sits invisibly on top so no
+   white Google chrome shows on any theme. */
+.google-signin {
+  position: relative;
+  width: 260px;
+  height: 46px;
+}
+.google-signin-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: .9rem;
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  transition: border-color .12s ease;
+}
+.google-signin:hover .google-signin-face { border-color: var(--text-faint); }
+.google-signin:focus-within .google-signin-face {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.google-signin-real {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+}
+/* stretch Google's (invisible) button subtree to cover the whole face so
+   every click lands on it — distortion doesn't matter, it's transparent */
+.google-signin-real > div,
+.google-signin-real > div > div,
+.google-signin-real [role="button"],
+.google-signin-real iframe { width: 100% !important; height: 100% !important; }
+.google-signin-real * { max-height: none !important; }
 
 .login-hint {
   font-family: var(--font);
