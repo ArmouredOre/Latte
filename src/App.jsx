@@ -38,6 +38,40 @@ function useGoogleReady() {
   return ready
 }
 
+// Full-screen "brewing" animation shown while an async view transition is in
+// flight (initial data fetch, sign-in exchange). The status line escalates so a
+// slow free-tier cold start doesn't look like a hang.
+function LoadingScreen({ title = 'Pouring your lists…' }) {
+  const [phase, setPhase] = useState(0)
+  useEffect(() => {
+    const t1 = setTimeout(() => setPhase(1), 4000)
+    const t2 = setTimeout(() => setPhase(2), 12000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [])
+
+  const message =
+    phase === 0 ? title
+    : phase === 1 ? 'Still brewing…'
+    : 'Waking the server — the first load after a while can take up to a minute.'
+
+  return (
+    <div className='loading-screen' role='status' aria-live='polite'>
+      <svg className='loading-cup' viewBox='0 0 120 120' width='96' height='96' aria-hidden='true'>
+        <path className='steam-wisp' d='M46 46 c -5 -8 5 -13 0 -21 c -5 -8 5 -13 0 -21' />
+        <path className='steam-wisp' d='M60 46 c -5 -8 5 -13 0 -21 c -5 -8 5 -13 0 -21' />
+        <path className='steam-wisp' d='M74 46 c -5 -8 5 -13 0 -21 c -5 -8 5 -13 0 -21' />
+        <ellipse className='cup-rim' cx='60' cy='46' rx='30' ry='6' />
+        <path className='cup-body' d='M30 46 h60 v22 a18 18 0 0 1 -18 18 h-24 a18 18 0 0 1 -18 -18 z' />
+        <path className='cup-handle' d='M90 52 h5 a12 12 0 0 1 0 24 h-5' />
+        <ellipse className='cup-coffee' cx='60' cy='46' rx='24' ry='4' />
+        <rect className='cup-saucer' x='26' y='98' width='68' height='7' rx='3.5' />
+      </svg>
+      <span className='loading-word'>Latte</span>
+      <p className='loading-msg'>{message}</p>
+    </div>
+  )
+}
+
 // Full-screen gate shown whenever there is no valid session. Renders Google's
 // own button; on success it exchanges the Google credential for our app JWT
 // (googleLogin) and hands the profile up via onLogin.
@@ -45,6 +79,7 @@ function LoginScreen({ onLogin }) {
   const googleReady = useGoogleReady()
   const buttonRef = useRef(null)
   const [error, setError] = useState(null)
+  const [signingIn, setSigningIn] = useState(false)
 
   useEffect(() => {
     if (!googleReady || !buttonRef.current) return
@@ -54,9 +89,11 @@ function LoginScreen({ onLogin }) {
       callback: async ({ credential }) => {
         try {
           setError(null)
+          setSigningIn(true)
           const user = await googleLogin(credential)
           onLogin(user)
         } catch (err) {
+          setSigningIn(false)
           setError(err.message || 'Sign-in failed. Please try again.')
         }
       },
@@ -69,7 +106,9 @@ function LoginScreen({ onLogin }) {
       shape: 'pill',
       width: 260,
     })
-  }, [googleReady, onLogin])
+  }, [googleReady, onLogin, signingIn])
+
+  if (signingIn) return <LoadingScreen title='Signing you in…' />
 
   return (
     <div className='login-screen'>
@@ -571,7 +610,7 @@ function App() {
   }
 
   if (loading) {
-    return <div className='app-loading'>Loading your lists…</div>
+    return <LoadingScreen />
   }
 
   return (
