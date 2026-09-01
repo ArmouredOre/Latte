@@ -142,6 +142,22 @@ function useGoogleReady() {
   return ready
 }
 
+// True while the viewport is at/below the mobile breakpoint. Drives the
+// off-canvas sidebar drawer.
+function useIsMobile(query = '(max-width: 768px)') {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia(query)
+    const onChange = (e) => setIsMobile(e.matches)
+    mq.addEventListener('change', onChange)
+    setIsMobile(mq.matches)
+    return () => mq.removeEventListener('change', onChange)
+  }, [query])
+  return isMobile
+}
+
 // Full-screen "brewing" animation shown while an async view transition is in
 // flight (initial data fetch, sign-in exchange). The status line escalates so a
 // slow free-tier cold start doesn't look like a hang.
@@ -636,6 +652,8 @@ function App() {
   const [theme, setTheme] = useThemeState()
 
   const [menuCollapsed, setMenuCollapsed] = useState(false)
+  const isMobile = useIsMobile()
+  const [menuOpen, setMenuOpen] = useState(false) // mobile sidebar drawer
   const [activeSection, setActiveSection] = useState('home')
   const [activeListIndex, setActiveListIndex] = useState(null)
   const [lists, setLists] = useState(EMPTY_LISTS)
@@ -696,7 +714,19 @@ function App() {
   const navigateTo = (section, listIndex = null) => {
     setActiveSection(section)
     setActiveListIndex(listIndex)
+    setMenuOpen(false) // tapping a destination closes the mobile drawer
   }
+
+  // The drawer is a mobile-only concept: close it when we grow to desktop, and
+  // let Escape dismiss it while it's open.
+  useEffect(() => { if (!isMobile) setMenuOpen(false) }, [isMobile])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [menuOpen])
 
   const toggleFolder = (type) => {
     setExpandedFolders(prev => ({ ...prev, [type]: !prev[type] }))
@@ -785,8 +815,18 @@ function App() {
 
   return (
     <div id='body'>
-      <div id='menu' className={menuCollapsed ? 'collapsed' : ''}>
-        {menuCollapsed ? (
+      {isMobile && menuOpen && (
+        <button
+          id='menuBackdrop'
+          aria-label='Close menu'
+          onClick={() => setMenuOpen(false)}
+        />
+      )}
+      <div
+        id='menu'
+        className={`${menuCollapsed && !isMobile ? 'collapsed' : ''}${menuOpen ? ' open' : ''}`}
+      >
+        {menuCollapsed && !isMobile ? (
           <button id='menuToggle' onClick={() => setMenuCollapsed(false)}>→</button>
         ) : (
           <>
@@ -838,12 +878,25 @@ function App() {
               ))}
             </div>
             <ThemeMenu theme={theme} onChange={setTheme} variant='inline' />
-            <button id='menuCollapse' onClick={() => setMenuCollapsed(true)}>←</button>
+            <button
+              id='menuCollapse'
+              aria-label={isMobile ? 'Close menu' : 'Collapse menu'}
+              onClick={() => (isMobile ? setMenuOpen(false) : setMenuCollapsed(true))}
+            >←</button>
           </>
         )}
       </div>
       <div id='workspace'>
         <div id='navbar'>
+          {isMobile && (
+            <button
+              id='menuOpenBtn'
+              className='nav-btn'
+              aria-label='Open menu'
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(true)}
+            >☰</button>
+          )}
           <button className={activeSection === 'home' ? 'nav-btn active' : 'nav-btn'} onClick={() => navigateTo('home')}>Home</button>
           {listTypes.map(type => (
             <button key={type} className={activeSection === type ? 'nav-btn active' : 'nav-btn'} onClick={() => navigateTo(type)}>

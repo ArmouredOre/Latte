@@ -223,7 +223,12 @@
   mix-blend-mode: multiply;
 }
 
-#body > * { position: relative; z-index: 1; }
+/* Lift only the layout columns above the paper texture. Overlays that live as
+   direct children of #body (.modal-overlay, .error-banner, #menuBackdrop) keep
+   their own position: fixed — a blanket `#body > *` rule used to override it via
+   ID specificity and strand them mid-flow. */
+#body > #menu,
+#body > #workspace { position: relative; z-index: 1; }
 
 #menu {
   display: flex;
@@ -487,6 +492,14 @@
   background-color: var(--nav-bg);
   color: var(--sidebar-text);
   border-color: var(--nav-bg);
+}
+
+/* hamburger that opens the sidebar drawer — mobile only (see media query) */
+#menuOpenBtn {
+  display: none;
+  padding: 6px 12px;
+  font-size: 1rem;
+  line-height: 1;
 }
 
 #taskbar { display: none; }
@@ -1413,6 +1426,45 @@
   .loading-cup { animation: none; }
   .steam-wisp { animation: none; opacity: .4; }
   * { transition-duration: .01ms !important; }
+}
+
+/* Tablet / phone: the sidebar leaves the flex row and becomes an off-canvas
+   drawer, so the workspace gets the full width instead of a ~40px sliver. */
+@media (max-width: 768px) {
+  #menuOpenBtn { display: inline-flex; align-items: center; }
+
+  /* two-ID selector to outrank `#body > #menu` from the overlay fix above */
+  #body > #menu {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 200;
+    width: var(--sidebar-w);
+    max-width: 84vw;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform .28s ease;
+    box-shadow: var(--shadow);
+  }
+  #body > #menu.open { transform: translateX(0); }
+  /* the desktop "rail" collapse doesn't apply on mobile — always full width */
+  #body > #menu.collapsed { width: var(--sidebar-w); align-items: flex-start; }
+
+  #menuBackdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 150;
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: var(--overlay);
+    cursor: pointer;
+    animation: backdrop-in .2s ease;
+  }
+  @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+
+  #workspace { width: 100%; padding: 0 var(--s4); }
+  #navbar { padding: var(--s3) 0; }
 }
 
 @media (max-width: 640px) {
