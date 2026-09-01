@@ -637,22 +637,29 @@
   background-color: var(--nav-bg);
   color: var(--sidebar-text);
   border: none;
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  font-size: .85rem;
+  font-size: .95rem;
   font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
+  opacity: 1; /* visible by default — touch devices have no hover to reveal it */
   transition: opacity .15s;
   line-height: 1;
   z-index: 2;
 }
-.home-card-wrapper:hover .delete-card-btn { opacity: 1; }
+/* On pointer devices, keep it out of the way until the card is hovered. */
+@media (hover: hover) {
+  .delete-card-btn { opacity: 0; }
+  .home-card-wrapper:hover .delete-card-btn,
+  .home-card-wrapper:focus-within .delete-card-btn,
+  .delete-card-btn:focus-visible { opacity: 1; }
+}
 .delete-card-btn:hover { background-color: var(--primary); }
+.delete-card-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .new-list-card {
   grid-column: 1 / -1;
@@ -1442,6 +1449,7 @@
     width: var(--sidebar-w);
     max-width: 84vw;
     height: 100vh;
+    height: 100dvh; /* keep the drawer footer clear of the browser chrome */
     transform: translateX(-100%);
     transition: transform .28s ease;
     box-shadow: var(--shadow);
@@ -1465,6 +1473,23 @@
 
   #workspace { width: 100%; padding: 0 var(--s4); }
   #navbar { padding: var(--s3) 0; }
+
+  /* mobile browser chrome makes 100vh spill past the visible area */
+  #body { height: 100dvh; }
+  #workspace { min-height: 100dvh; }
+
+  /* Bigger tap targets — the report flagged nav pills (~30px) and the
+     card / row "×" (22px) as below the ~44px touch guideline. */
+  .nav-btn { padding: 10px 16px; }
+  #menuOpenBtn { padding: 10px 13px; }
+  .folder-header { padding: 11px 10px; }
+  .sheet-file { padding: 11px 10px 11px 16px; }
+  .back-btn,
+  .save-btn,
+  .delete-sheet-btn { padding: 10px 17px; }
+  .delete-card-btn { width: 34px; height: 34px; font-size: 1.05rem; }
+  .delete-cell button { padding: 4px 12px; font-size: 1.5rem; }
+  #addRowBtn { padding: 12px 22px; }
 }
 
 @media (max-width: 640px) {
