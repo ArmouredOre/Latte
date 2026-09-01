@@ -413,11 +413,52 @@
 #navbar,
 #homeSection,
 #listLanding,
-.sheet-view {
+.sheet-view,
+.coming-soon {
   width: 100%;
   max-width: var(--content-max);
   margin: 0 auto;
   box-sizing: border-box;
+}
+
+/* ---------- Coming soon (Calendar) ---------- */
+.coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--s8) var(--s5);
+  gap: var(--s3);
+}
+.coming-soon .loading-cup { animation: cup-bob 2.8s ease-in-out infinite; }
+.cs-badge {
+  font-family: var(--font);
+  font-size: .72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  color: var(--accent-ink);
+  background: var(--accent);
+  padding: 5px 14px;
+  border-radius: var(--r-pill);
+  margin-top: var(--s2);
+}
+.cs-title {
+  font-family: var(--font);
+  font-size: 1.9rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: .02em;
+  margin: var(--s1) 0 0;
+  text-wrap: balance;
+}
+.cs-msg {
+  font-family: var(--font);
+  font-size: .96rem;
+  color: var(--text-dim);
+  line-height: 1.65;
+  max-width: 46ch;
+  margin: 0;
 }
 
 #navbar {

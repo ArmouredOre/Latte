@@ -176,6 +176,27 @@ function LoadingScreen({ title = 'Pouring your lists…' }) {
   )
 }
 
+// Placeholder shown for a workspace section that isn't built yet.
+function ComingSoon({ title }) {
+  return (
+    <div className='coming-soon'>
+      <svg className='loading-cup' viewBox='0 0 120 120' width='108' height='108' aria-hidden='true'>
+        <path className='steam-wisp' d='M46 46 c -5 -8 5 -13 0 -21 c -5 -8 5 -13 0 -21' />
+        <path className='steam-wisp' d='M60 46 c -5 -8 5 -13 0 -21 c -5 -8 5 -13 0 -21' />
+        <path className='steam-wisp' d='M74 46 c -5 -8 5 -13 0 -21 c -5 -8 5 -13 0 -21' />
+        <ellipse className='cup-rim' cx='60' cy='46' rx='30' ry='6' />
+        <path className='cup-body' d='M30 46 h60 v22 a18 18 0 0 1 -18 18 h-24 a18 18 0 0 1 -18 -18 z' />
+        <path className='cup-handle' d='M90 52 h5 a12 12 0 0 1 0 24 h-5' />
+        <ellipse className='cup-coffee' cx='60' cy='46' rx='24' ry='4' />
+        <rect className='cup-saucer' x='26' y='98' width='68' height='7' rx='3.5' />
+      </svg>
+      <span className='cs-badge'>Coming soon</span>
+      <h1 className='cs-title'>Your {title} is still brewing</h1>
+      <p className='cs-msg'>This feature is still under development. Check back soon.</p>
+    </div>
+  )
+}
+
 // Full-screen gate shown whenever there is no valid session. Renders Google's
 // own button; on success it exchanges the Google credential for our app JWT
 // (googleLogin) and hands the profile up via onLogin.
@@ -829,7 +850,12 @@ function App() {
               {LIST_CONFIG[type].name}
             </button>
           ))}
-          <button className='nav-btn'>Calendar</button>
+          <button
+            className={activeSection === 'calendar' ? 'nav-btn active' : 'nav-btn'}
+            onClick={() => navigateTo('calendar')}
+          >
+            Calendar
+          </button>
         </div>
         {activeSection === 'home' ? (
           <div id='homeSection'>
@@ -842,12 +868,14 @@ function App() {
                   <span className='home-card-desc'>{LIST_CONFIG[type].description.split('.')[0]}.</span>
                 </button>
               ))}
-              <button className='home-card'>
+              <button className='home-card' onClick={() => navigateTo('calendar')}>
                 <span className='home-card-title'>Calendar</span>
                 <span className='home-card-desc'>View your month at a glance</span>
               </button>
             </div>
           </div>
+        ) : activeSection === 'calendar' ? (
+          <ComingSoon title='Calendar' />
         ) : (activeListIndex === null || !lists[activeSection][activeListIndex]) ? (
           <ListLanding
             type={activeSection}
