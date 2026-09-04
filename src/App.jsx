@@ -323,9 +323,39 @@ const LIST_CONFIG = {
 // `saved` flag doesn't register as an unsaved edit.
 const sheetSnapshot = (list) => JSON.stringify({ name: list.name, rows: list.rows })
 
+// Generic "are you sure" gate for destructive, hard-to-undo actions (deleting
+// an entire sheet or list). Row-level deletes stay a single click with an
+// undo toast instead — the two are different blast radii on purpose.
+function ConfirmDialog({ title, text, confirmLabel = 'Delete', onConfirm, onCancel }) {
+  return (
+    <div className='modal-overlay' onClick={onCancel}>
+      <div className='modal' onClick={(e) => e.stopPropagation()} role='alertdialog' aria-modal='true' aria-label={title}>
+        <h2 className='modal-title'>{title}</h2>
+        <p className='modal-text'>{text}</p>
+        <div className='modal-actions'>
+          <button className='modal-btn cancel' onClick={onCancel} autoFocus>Cancel</button>
+          <button className='modal-btn danger' onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Enter/Space activates a non-native `role="button"` element (our table
+// cells are <td>s so they can sit in normal tab order without restructuring
+// the grid). Space is prevented so it doesn't also scroll the page.
+const onActivateKey = (fn) => (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    fn()
+  }
+}
+
 function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsaved }) {
   const [editingCell, setEditingCell] = useState(null)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [confirmDeleteSheet, setConfirmDeleteSheet] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState(null) // { row, index } — undo window
   const [saving, setSaving] = useState(false)
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(list.name)
@@ -340,13 +370,32 @@ function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsave
     setList({ ...list, rows: [...list.rows, config.rowTemplate()], saved: false })
   }
 
+  // Single click, no confirmation — but the row stays recoverable for a few
+  // seconds via an undo toast instead of a modal on every row delete.
   const deleteRow = (id) => {
+    const index = list.rows.findIndex(row => row.id === id)
+    if (index === -1) return
+    setPendingDelete({ row: list.rows[index], index })
     setList({
       ...list,
-      rows: list.rows.length === 1 ? [] : list.rows.filter(row => row.id !== id),
+      rows: list.rows.filter(row => row.id !== id),
       saved: false,
     })
   }
+
+  const undoDeleteRow = () => {
+    if (!pendingDelete) return
+    const rows = [...list.rows]
+    rows.splice(pendingDelete.index, 0, pendingDelete.row)
+    setList({ ...list, rows, saved: false })
+    setPendingDelete(null)
+  }
+
+  useEffect(() => {
+    if (!pendingDelete) return
+    const t = setTimeout(() => setPendingDelete(null), 6000)
+    return () => clearTimeout(t)
+  }, [pendingDelete])
 
   const updateCell = (id, field, value) => {
     setList({
@@ -472,7 +521,7 @@ function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsave
           <button className={`save-btn ${saved ? 'saved' : ''}`} onClick={handleSave} disabled={saved || saving}>
             {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
           </button>
-          <button className='delete-sheet-btn' onClick={onDeleteList} title='Delete this sheet'>Delete Sheet</button>
+          <button className='delete-sheet-btn' onClick={() => setConfirmDeleteSheet(true)} title='Delete this sheet'>Delete Sheet</button>
         </div>
       </div>
       <div id='sheetContainer'>
@@ -490,11 +539,16 @@ function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsave
                 <td className='row-number'>{index + 1}</td>
                 {config.columns.map(col => {
                   if (col.type === 'status') {
+                    const cycle = () => cycleStatus(row.id)
                     return (
                       <td
                         key={col.key}
                         className='cell status-cell'
-                        onClick={() => cycleStatus(row.id)}
+                        tabIndex={0}
+                        role='button'
+                        aria-label={`${col.label}: ${row[col.key]}. Press Enter to change.`}
+                        onClick={cycle}
+                        onKeyDown={onActivateKey(cycle)}
                       >
                         <span className={`status-badge status-${statusIndex(row[col.key])}`}>
                           {row[col.key]}
@@ -502,19 +556,27 @@ function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsave
                       </td>
                     )
                   }
+                  const isEditing = editingCell?.id === row.id && editingCell?.field === col.key
+                  const startEdit = () => setEditingCell({ id: row.id, field: col.key })
                   return (
                     <td
                       key={col.key}
                       className='cell editable'
-                      onClick={() => setEditingCell({ id: row.id, field: col.key })}
+                      tabIndex={isEditing ? -1 : 0}
+                      role='button'
+                      aria-label={`${col.label}: ${row[col.key] || col.placeholder}. Press Enter to edit.`}
+                      onClick={startEdit}
+                      onKeyDown={onActivateKey(startEdit)}
                     >
-                      {editingCell?.id === row.id && editingCell?.field === col.key ? (
+                      {isEditing ? (
                         <input
                           type={col.type}
                           value={row[col.key]}
                           onChange={(e) => updateCell(row.id, col.key, e.target.value)}
                           onBlur={() => setEditingCell(null)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') setEditingCell(null) }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === 'Escape') setEditingCell(null)
+                          }}
                           autoFocus
                         />
                       ) : (
@@ -524,7 +586,7 @@ function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsave
                   )
                 })}
                 <td className='cell delete-cell'>
-                  <button onClick={() => deleteRow(row.id)} title='Delete row'>×</button>
+                  <button onClick={() => deleteRow(row.id)} aria-label={`Delete row ${index + 1}`} title='Delete row'>×</button>
                 </td>
               </tr>
             ))}
@@ -532,6 +594,20 @@ function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsave
         </table>
       </div>
       <button id='addRowBtn' onClick={addRow}>{config.newRowBtn}</button>
+      {pendingDelete && (
+        <div className='undo-toast' role='status'>
+          <span>Row removed</span>
+          <button className='undo-toast-btn' onClick={undoDeleteRow}>Undo</button>
+        </div>
+      )}
+      {confirmDeleteSheet && (
+        <ConfirmDialog
+          title='Delete this sheet?'
+          text={`"${list.name || config.name}" and everything in it — ${list.rows.length} item${list.rows.length !== 1 ? 's' : ''} — will be permanently deleted.`}
+          onCancel={() => setConfirmDeleteSheet(false)}
+          onConfirm={() => { setConfirmDeleteSheet(false); onDeleteList() }}
+        />
+      )}
       {showConfirmModal && (
         <div className='modal-overlay' onClick={() => setShowConfirmModal(false)}>
           <div className='modal' onClick={(e) => e.stopPropagation()}>
@@ -552,12 +628,15 @@ function SheetView({ config, list, setList, onSave, onDeleteList, onBack, unsave
 }
 
 function ListLanding({ type, config, lists, onSelect, onCreate, onDelete }) {
+  const [confirmDeleteIndex, setConfirmDeleteIndex] = useState(null)
+  const empty = lists.length === 0
+
   return (
     <div id='listLanding'>
       <h1 id='listTitle'>{config.name}</h1>
       <p id='listDesc'>{config.description}</p>
-      {lists.length === 0 && (
-        <p className='landing-empty'>Nothing here yet — create your first {config.name.toLowerCase()} below.</p>
+      {empty && (
+        <p className='landing-empty'>Nothing here yet.</p>
       )}
       <div id='listCards'>
         {lists.map((l, i) => (
@@ -569,14 +648,29 @@ function ListLanding({ type, config, lists, onSelect, onCreate, onDelete }) {
               </span>
               <span className='home-card-desc'>{l.rows.length} item{l.rows.length !== 1 ? 's' : ''}</span>
             </button>
-            <button className='delete-card-btn' onClick={(e) => { e.stopPropagation(); onDelete(i) }} title='Delete'>×</button>
+            <button
+              className='delete-card-btn'
+              onClick={(e) => { e.stopPropagation(); setConfirmDeleteIndex(i) }}
+              aria-label={`Delete ${l.name}`}
+              title='Delete'
+            >×</button>
           </div>
         ))}
       </div>
-      <button className='home-card new-list-card' onClick={onCreate}>
+      <button
+        className={`home-card new-list-card${empty ? ' primary' : ''}`}
+        onClick={onCreate}
+      >
         <span className='home-card-title'>+ New List</span>
-        <span className='home-card-desc'>Create a new list</span>
       </button>
+      {confirmDeleteIndex !== null && (
+        <ConfirmDialog
+          title='Delete this list?'
+          text={`"${lists[confirmDeleteIndex].name}" and everything in it — ${lists[confirmDeleteIndex].rows.length} item${lists[confirmDeleteIndex].rows.length !== 1 ? 's' : ''} — will be permanently deleted.`}
+          onCancel={() => setConfirmDeleteIndex(null)}
+          onConfirm={() => { onDelete(confirmDeleteIndex); setConfirmDeleteIndex(null) }}
+        />
+      )}
     </div>
   )
 }

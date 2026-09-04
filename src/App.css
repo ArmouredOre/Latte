@@ -172,6 +172,18 @@
    ============================================================ */
 * { box-sizing: border-box; }
 
+/* Baseline keyboard-focus ring for every plain button/link in the app —
+   most of the app's buttons (.nav-btn, .save-btn, .back-btn, folder/sheet
+   rows, home cards…) are hand-rolled rather than `.btn`, so they had no
+   visible focus state at all. More specific rules below (inputs, the theme
+   menu, table cells) still override this where they need a different look. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .btn {
   font-family: var(--font);
   font-size: .82rem;
@@ -675,6 +687,18 @@
 .new-list-card .home-card-title { color: var(--text-dim); }
 .new-list-card .home-card-desc { color: var(--text-faint); }
 
+/* The empty-state variant: it's the only action on the page, so it should
+   look like one — filled instead of the muted "add another" dashed style. */
+.new-list-card.primary {
+  border-style: solid;
+  border-color: transparent;
+  background-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+  align-items: center;
+}
+.new-list-card.primary .home-card-title { color: var(--primary-ink); font-size: 1.05rem; }
+.new-list-card.primary:hover { background-color: var(--primary); border-color: transparent; filter: brightness(1.08); }
+
 /* ============================================================
    SHEET VIEW
    ============================================================ */
@@ -854,22 +878,30 @@
 }
 
 .cell.editable { cursor: pointer; position: relative; box-sizing: border-box; }
+.cell.editable:focus-visible,
+.status-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .cell.editable input {
   width: 100%;
-  border: 1px solid var(--accent);
-  border-radius: var(--r);
-  padding: 5px 8px;
-  font-size: .85rem;
+  /* box-shadow instead of border, and padding that mirrors the td's own —
+     both sized so the row doesn't grow when a cell drops into edit mode. */
+  border: none;
+  box-shadow: 0 0 0 1px var(--accent);
+  border-radius: var(--r-sm);
+  padding: 1px 3px;
+  margin: -1px -3px;
+  font: inherit;
   background-color: var(--surface);
   outline: none;
   color: var(--text);
-  font-family: var(--font);
   box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.cell.editable input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+.cell.editable input:focus { box-shadow: 0 0 0 2px var(--accent); }
 
 .placeholder {
   color: var(--text-faint);
@@ -931,6 +963,37 @@
   font-family: var(--font);
 }
 #addRowBtn:hover { border-color: var(--text-faint); color: var(--text); }
+
+.undo-toast {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s2);
+  padding: 8px 8px 8px 16px;
+  background-color: var(--primary);
+  color: var(--primary-ink);
+  font-family: var(--font);
+  font-size: .82rem;
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-sm);
+  animation: undo-toast-in .18s ease;
+}
+@keyframes undo-toast-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.undo-toast-btn {
+  background: color-mix(in srgb, var(--primary-ink) 16%, transparent);
+  color: var(--primary-ink);
+  border: none;
+  font-family: var(--font);
+  font-size: .8rem;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: background-color .12s;
+}
+.undo-toast-btn:hover { background: color-mix(in srgb, var(--primary-ink) 28%, transparent); }
+.undo-toast-btn:focus-visible { outline: 2px solid var(--primary-ink); outline-offset: 2px; }
 
 /* ============================================================
    MODAL
@@ -1017,7 +1080,15 @@
 .modal-btn.discard:hover { background-color: var(--surface-2); color: var(--danger); border-color: var(--danger); }
 .modal-btn.confirm { background-color: var(--primary); color: var(--primary-ink); }
 .modal-btn.confirm:hover:not(:disabled) { filter: brightness(1.08); }
+/* `--danger` is a foreground accent, not a fill — in the dark themes it's a
+   pale coral meant to sit on a dark surface, so using it as a solid button
+   background (with a hardcoded ink color) went pastel and unreadable there
+   and looked out of place everywhere else. Match `.discard`'s outline
+   treatment instead, which already reads correctly in every theme. */
+.modal-btn.danger { background-color: transparent; border-color: var(--danger); color: var(--danger); }
+.modal-btn.danger:hover:not(:disabled) { background-color: color-mix(in srgb, var(--danger) 14%, transparent); }
 .modal-btn:disabled { opacity: .7; cursor: default; }
+.modal-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ============================================================
    LOGIN
