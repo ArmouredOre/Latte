@@ -1105,11 +1105,14 @@ a:focus-visible,
   overflow: hidden;
 }
 
-/* warm paper texture, shared by every full-bleed surface */
+/* warm paper texture, shared by every full-bleed surface — deliberately NOT
+   the loading screen: it needs to paint instantly, and the app holds the
+   loading screen on-screen until this image is ready anyway (see
+   useTextureReady in App.jsx), so the screen it hands off to never flashes
+   untextured-then-textured. */
 #body::before,
 .landing::before,
-.login-screen::before,
-.loading-screen::before {
+.login-screen::before {
   content: '';
   position: fixed;
   inset: 0;
@@ -1120,7 +1123,6 @@ a:focus-visible,
   mix-blend-mode: multiply;
   z-index: 0;
 }
-.loading-screen > * { position: relative; z-index: 1; }
 
 .login-card {
   position: relative;

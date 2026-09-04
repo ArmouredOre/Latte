@@ -158,9 +158,30 @@ function useIsMobile(query = '(max-width: 768px)') {
   return isMobile
 }
 
+// Preloads the shared paper-texture image once (it's the same file on every
+// full-bleed screen, so the browser only ever fetches it a single time) and
+// reports when it's actually decoded and ready to paint without a flash.
+// `onerror` still resolves ready — a slow/broken asset shouldn't strand the
+// app on the loading screen forever.
+function useTextureReady(src = '/body-texture.png') {
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => { if (!cancelled) setReady(true) }
+    img.onerror = () => { if (!cancelled) setReady(true) }
+    img.src = src
+    return () => { cancelled = true }
+  }, [src])
+  return ready
+}
+
 // Full-screen "brewing" animation shown while an async view transition is in
 // flight (initial data fetch, sign-in exchange). The status line escalates so a
-// slow free-tier cold start doesn't look like a hang.
+// slow free-tier cold start doesn't look like a hang. No paper texture of its
+// own (see App.css) so it always paints instantly — the app holds it on
+// screen until useTextureReady() is true, so the screen underneath never
+// flashes untextured-then-textured.
 function LoadingScreen({ title = 'Pouring your lists…' }) {
   const [phase, setPhase] = useState(0)
   useEffect(() => {
@@ -744,6 +765,7 @@ function App() {
   const [user, setUser] = useState(() => (getToken() ? getStoredUser() : null))
   const [showLogin, setShowLogin] = useState(false) // landing page -> login screen
   const [theme, setTheme] = useThemeState()
+  const textureReady = useTextureReady()
 
   const [menuCollapsed, setMenuCollapsed] = useState(false)
   const isMobile = useIsMobile()
@@ -903,7 +925,10 @@ function App() {
     )
   }
 
-  if (loading) {
+  // Hold the loading screen until the app shell's paper texture is ready too,
+  // not just the data — otherwise the shell would paint untextured for a
+  // beat and then pop the texture in once it arrives.
+  if (loading || !textureReady) {
     return <>{floatingThemeMenu}<LoadingScreen /></>
   }
 
